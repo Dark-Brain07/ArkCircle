@@ -23,6 +23,8 @@ body {
 #root {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
+  /* Dynamic viewport height for mobile browsers */
   display: flex;
   flex-direction: column;
 }
@@ -161,6 +163,13 @@ canvas {
 .submit-btn:hover {
   transform: scale(1.05);
   box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+}
+
+.button-group {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  justify-content: center;
 }
 
 
@@ -482,31 +491,47 @@ canvas {
     top: auto;
     right: auto;
     left: 50%;
-    bottom: 0;
+    bottom: 0.5rem;
+    /* Raised slightly to avoid browser UI */
     transform: translateX(-50%);
     width: auto;
-    min-width: 200px;
+    min-width: 220px;
     max-width: 90%;
     max-height: 50vh;
-    border-radius: 20px 20px 0 0;
-    border-left: 1px solid var(--color-primary-dim);
-    border-right: 1px solid var(--color-primary-dim);
-    border-bottom: none;
+    border-radius: 20px;
+    /* Full rounded corners for header visibility */
+    border: 1px solid var(--color-primary-dim);
     padding: 0.5rem 1rem;
     z-index: 60;
   }
 
   .leaderboard-container.expanded {
-    width: 90%;
-    max-height: 70vh;
+    width: 95%;
+    max-height: 75vh;
+    bottom: 0;
     border-radius: 20px 20px 0 0;
   }
 
   /* Start Drawing Button (UI Overlay) - positioned above leaderboard */
   .ui-overlay {
-    bottom: 4rem;
+    bottom: 6rem;
+    /* Raised further up */
     width: 100%;
     z-index: 10;
+  }
+
+  .button-group {
+    gap: 0.5rem;
+    padding: 0 1rem;
+  }
+
+  .button-group .submit-btn {
+    flex: 0 0 40%;
+    width: auto;
+    min-width: 0;
+    font-size: 0.9rem;
+    padding: 0.8rem 0.5rem;
+    border-radius: 12px;
   }
 
   .score-display {

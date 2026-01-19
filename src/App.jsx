@@ -145,7 +145,7 @@ function App() {
         {gameState === 'SCORED' && (
           <>
             <div className="score-display">{score ? score.toFixed(1) : 0}%</div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            <div className="button-group">
               <button className="submit-btn" onClick={startGame}>
                 Try Again
               </button>
