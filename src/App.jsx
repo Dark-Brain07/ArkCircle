@@ -4,8 +4,7 @@ import GameCanvas from './GameCanvas';
 import Leaderboard from './Leaderboard';
 import { connectWallet, getContract, getReadOnlyProvider } from './Web3Manager';
 import { ethers } from 'ethers';
-
-// ... (rest of imports)
+import WalletModal from './WalletModal';
 
 const HARDCODED_CONTRACT_ADDRESS = "0xD8f957dd16cD1409Feb8A5aC448E7E3A165aa37B";
 
@@ -19,15 +18,23 @@ function App() {
   const [resetTrigger, setResetTrigger] = useState(0);
   const [signer, setSigner] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [connectedProvider, setConnectedProvider] = useState(null);
 
-  const handleConnect = async () => {
-    try {
-      const { account, signer } = await connectWallet();
-      setAccount(account);
-      setSigner(signer);
-    } catch (err) {
-      alert("Failed to connect: " + err.message);
-    }
+  const handleConnect = () => {
+    setWalletModalOpen(true);
+  };
+
+  const handleWalletConnected = ({ account, provider, signer }) => {
+    setAccount(account);
+    setSigner(signer);
+    setConnectedProvider(provider);
+  };
+
+  const handleDisconnect = () => {
+    setAccount(null);
+    setSigner(null);
+    setConnectedProvider(null);
   };
 
   const startGame = () => {
@@ -78,7 +85,6 @@ function App() {
       // Determine score integer (0-10000 basis points)
       const scoreBasisPoints = Math.floor(score * 100);
 
-      // Metamask auto-gas limit - we don't pass gasLimit, ethers handles it
       const tx = await contract.submitScore(scoreBasisPoints);
 
       setStatusMsg("Mining...");
@@ -86,8 +92,6 @@ function App() {
 
       setGameState('SUBMITTED');
       setStatusMsg("Score Submitted Successfully!");
-
-      // Reset after a delay?
     } catch (err) {
       console.error(err);
       setStatusMsg("Error: " + (err.reason || err.message));
@@ -103,7 +107,7 @@ function App() {
           <div className="title">Arc Circle</div>
         </div>
 
-        <div style={{ pointerEvents: 'auto', display: 'flex', gap: '10px' }}>
+        <div style={{ pointerEvents: 'auto', display: 'flex', gap: '10px', alignItems: 'center' }}>
           {!contractAddress && (
             <input
               type="text"
@@ -115,9 +119,16 @@ function App() {
               }}
             />
           )}
-          <button className="wallet-btn" onClick={handleConnect}>
-            {account ? `${account.substring(0, 6)}...${account.substring(38)}` : "Connect Wallet"}
-          </button>
+          {account ? (
+            <button className="wallet-btn wallet-btn-connected" onClick={handleDisconnect}>
+              <span className="wallet-dot"></span>
+              {`${account.substring(0, 6)}...${account.substring(38)}`}
+            </button>
+          ) : (
+            <button className="wallet-btn" onClick={handleConnect}>
+              Connect Wallet
+            </button>
+          )}
         </div>
       </header>
 
@@ -175,7 +186,7 @@ function App() {
 
       <Leaderboard
         contractAddress={contractAddress}
-        provider={account ? new ethers.BrowserProvider(window.ethereum) : getReadOnlyProvider()}
+        provider={connectedProvider || getReadOnlyProvider()}
         resetTrigger={gameState === 'SUBMITTED' ? resetTrigger : 0}
       />
 
@@ -183,6 +194,12 @@ function App() {
         <img src="/rajuice-avatar.jpg" alt="Rajuice" className="dev-avatar" />
         <div className="dev-text">Developed By <span>Rajuice</span></div>
       </a>
+
+      <WalletModal
+        isOpen={walletModalOpen}
+        onClose={() => setWalletModalOpen(false)}
+        onConnected={handleWalletConnected}
+      />
     </div>
   );
 }

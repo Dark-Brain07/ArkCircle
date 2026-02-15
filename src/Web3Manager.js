@@ -14,10 +14,94 @@ const CONTRACT_ABI = [
     "event ScoreSubmitted(address indexed player, uint256 accuracy)"
 ];
 
-export const switchNetwork = async () => {
-    if (!window.ethereum) return false;
+// ── EIP-6963 Multi-Provider Discovery ──────────────────────────────
+let _eip6963Providers = [];
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('eip6963:announceProvider', (event) => {
+        const exists = _eip6963Providers.some(
+            (p) => p.info.uuid === event.detail.info.uuid
+        );
+        if (!exists) {
+            _eip6963Providers.push(event.detail);
+        }
+    });
+    // Request providers to announce themselves
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+}
+
+/**
+ * Returns all EIP-6963 announced wallet providers.
+ */
+export const getEIP6963Providers = () => [..._eip6963Providers];
+
+/**
+ * Check if the user is on a mobile device.
+ */
+export const isMobile = () => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+    );
+};
+
+/**
+ * Check if an injected provider is available (window.ethereum or EIP-6963).
+ */
+export const hasInjectedProvider = () => {
+    return (
+        typeof window !== 'undefined' &&
+        (!!window.ethereum || _eip6963Providers.length > 0)
+    );
+};
+
+// ── Deep-link URLs for popular mobile wallets ──────────────────────
+export const getMobileWalletDeepLinks = () => {
+    const dappUrl = typeof window !== 'undefined'
+        ? encodeURIComponent(window.location.href)
+        : '';
+    const rawUrl = typeof window !== 'undefined' ? window.location.href : '';
+
+    return [
+        {
+            name: 'MetaMask',
+            icon: '🦊',
+            deepLink: `https://metamask.app.link/dapp/${rawUrl.replace(/^https?:\/\//, '')}`,
+            downloadUrl: 'https://metamask.io/download/',
+        },
+        {
+            name: 'Trust Wallet',
+            icon: '🛡️',
+            deepLink: `https://link.trustwallet.com/open_url?coin_id=60&url=${dappUrl}`,
+            downloadUrl: 'https://trustwallet.com/download',
+        },
+        {
+            name: 'Coinbase Wallet',
+            icon: '🔵',
+            deepLink: `https://go.cb-w.com/dapp?cb_url=${dappUrl}`,
+            downloadUrl: 'https://www.coinbase.com/wallet/downloads',
+        },
+        {
+            name: 'OKX Wallet',
+            icon: '⚫',
+            deepLink: `okx://wallet/dapp/url?dappUrl=${dappUrl}`,
+            downloadUrl: 'https://www.okx.com/web3',
+        },
+        {
+            name: 'Rabby Wallet',
+            icon: '🐰',
+            deepLink: null, // Rabby is desktop-only extension
+            downloadUrl: 'https://rabby.io/',
+        },
+    ];
+};
+
+// ── Network switching / adding ─────────────────────────────────────
+export const switchNetwork = async (provider) => {
+    const ethereum = provider || window.ethereum;
+    if (!ethereum) return false;
     try {
-        await window.ethereum.request({
+        await ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: ARC_CHAIN_ID_HEX }],
         });
@@ -25,15 +109,15 @@ export const switchNetwork = async () => {
     } catch (switchError) {
         if (switchError.code === 4902) {
             try {
-                await window.ethereum.request({
+                await ethereum.request({
                     method: 'wallet_addEthereumChain',
                     params: [
                         {
                             chainId: ARC_CHAIN_ID_HEX,
                             chainName: 'Arc Testnet',
                             nativeCurrency: {
-                                name: 'USDC', // User said Currency symbol USDC for the network?? Usually it is ETH or ARC, but user said "Currency symbol USDC".
-                                symbol: 'USDC', // Note: Native currency being USDC is unusual but specified.
+                                name: 'USDC',
+                                symbol: 'USDC',
                                 decimals: 18,
                             },
                             rpcUrls: [ARC_RPC_URL],
@@ -51,34 +135,42 @@ export const switchNetwork = async () => {
     return false;
 };
 
-export const getContract = (address, signerOrProvider) => {
-    return new ethers.Contract(address, CONTRACT_ABI, signerOrProvider);
+// ── Connect using a specific EIP-1193 provider ─────────────────────
+export const connectWithProvider = async (ethereumProvider) => {
+    try {
+        const accounts = await ethereumProvider.request({
+            method: 'eth_requestAccounts',
+        });
+        const provider = new ethers.BrowserProvider(ethereumProvider);
+        const network = await provider.getNetwork();
+
+        if (Number(network.chainId) !== ARC_CHAIN_ID) {
+            const switched = await switchNetwork(ethereumProvider);
+            if (!switched) throw new Error('Incorrect Network');
+        }
+
+        return {
+            account: accounts[0],
+            provider,
+            signer: await provider.getSigner(),
+        };
+    } catch (error) {
+        console.error('Connection error:', error);
+        throw error;
+    }
 };
 
+// ── Legacy connect (uses window.ethereum directly) ─────────────────
 export const connectWallet = async () => {
     if (typeof window.ethereum !== 'undefined') {
-        try {
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const network = await provider.getNetwork();
-
-            if (Number(network.chainId) !== ARC_CHAIN_ID) {
-                const switched = await switchNetwork();
-                if (!switched) throw new Error("Incorrect Network");
-            }
-
-            return {
-                account: accounts[0],
-                provider: provider,
-                signer: await provider.getSigner()
-            };
-        } catch (error) {
-            console.error("Connection error:", error);
-            throw error;
-        }
-    } else {
-        throw new Error("Metamask not found");
+        return connectWithProvider(window.ethereum);
     }
+    throw new Error('No wallet detected');
+};
+
+// ── Contract helpers (unchanged) ───────────────────────────────────
+export const getContract = (address, signerOrProvider) => {
+    return new ethers.Contract(address, CONTRACT_ABI, signerOrProvider);
 };
 
 export const getReadOnlyProvider = () => {
@@ -88,19 +180,19 @@ export const getReadOnlyProvider = () => {
 export const getLeaderboard = async (contract) => {
     try {
         const count = await contract.getScoreCount();
-        // Fetch all scores (caution: fine for demo, slow for production if count is high)
         const scores = await contract.getTopScores(count);
 
-        // Sort descending by accuracy
-        const sortedScores = [...scores].map(s => ({
-            player: s.player,
-            accuracy: Number(s.accuracy),
-            timestamp: Number(s.timestamp)
-        })).sort((a, b) => b.accuracy - a.accuracy);
+        const sortedScores = [...scores]
+            .map((s) => ({
+                player: s.player,
+                accuracy: Number(s.accuracy),
+                timestamp: Number(s.timestamp),
+            }))
+            .sort((a, b) => b.accuracy - a.accuracy);
 
         return sortedScores.slice(0, 100);
     } catch (err) {
-        console.error("Leaderboard fetch error:", err);
+        console.error('Leaderboard fetch error:', err);
         return [];
     }
 };
